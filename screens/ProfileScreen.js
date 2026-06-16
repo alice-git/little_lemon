@@ -10,14 +10,12 @@ import {
   Image,
   Switch,
 } from 'react-native';
+import { CommonActions } from '@react-navigation/native';
 import {
   getUserProfile,
   saveUserProfile,
   clearUserProfile,
-  setIsOnboarded,
 } from '../utils/storage';
-import { getIsOnboarded } from '../utils/storage';
-import { CommonActions } from '@react-navigation/native';
 
 const ProfileScreen = ({ navigation }) => {
   const [firstName, setFirstName] = useState('');
@@ -33,16 +31,19 @@ const ProfileScreen = ({ navigation }) => {
 
   useEffect(() => {
     const checkAccess = async () => {
-        const onboarded = await getIsOnboarded();
-        if (!onboarded) {
-        navigation.replace('Onboarding');
-        }
+      const profile = await getUserProfile();
+      if (!profile || !profile.firstName) {
+        navigation.dispatch(
+          CommonActions.reset({
+            index: 0,
+            routes: [{ name: 'Onboarding' }],
+          })
+        );
+      } else {
+        loadProfile();
+      }
     };
     checkAccess();
-    }, []);
-
-  useEffect(() => {
-    loadProfile();
   }, []);
 
   const loadProfile = async () => {
@@ -56,29 +57,36 @@ const ProfileScreen = ({ navigation }) => {
   };
 
   const handleSaveChanges = async () => {
-    if (!firstName.trim() || !lastName.trim() || !email.trim() || !phone.trim()) {
-      Alert.alert('Error', 'All fields are required');
+    // Solo nombre y email son obligatorios
+    if (!firstName.trim()) {
+      Alert.alert('Required Field', 'First name is required');
+      return;
+    }
+    
+    if (!email.trim()) {
+      Alert.alert('Required Field', 'Email is required');
+      return;
+    }
+    
+    // Validar formato de email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      Alert.alert('Invalid Email', 'Please enter a valid email address');
       return;
     }
 
     const updatedProfile = {
       firstName: firstName.trim(),
-      lastName: lastName.trim(),
+      lastName: lastName.trim() || '',
       email: email.trim(),
-      phone: phone.trim(),
+      phone: phone.trim() || '',
     };
 
     await saveUserProfile(updatedProfile);
     Alert.alert('Success', 'Profile updated successfully');
   };
 
-  const handleDiscardChanges = async () => {
-    await loadProfile();
-    Alert.alert('Changes discarded', 'Your profile has been reset');
-  };
-
   const handleLogout = async () => {
-    
     Alert.alert(
       'Log out',
       'Are you sure you want to log out? All your data will be cleared.',
@@ -88,8 +96,13 @@ const ProfileScreen = ({ navigation }) => {
           text: 'Log out',
           style: 'destructive',
           onPress: async () => {
-            await clearUserProfile();            
-            navigation.replace('Onboarding');
+            await clearUserProfile();
+            navigation.dispatch(
+              CommonActions.reset({
+                index: 0,
+                routes: [{ name: 'Onboarding' }],
+              })
+            );
           },
         },
       ]
@@ -122,8 +135,8 @@ const ProfileScreen = ({ navigation }) => {
             />
           </View>
           <View style={styles.avatarButtons}>
-            <TouchableOpacity style={{...styles.avatarButton, backgroundColor: '#495E57'}}>
-              <Text style={styles.avatarButtonText, {  color: '#ffffff' }}>Change</Text>
+            <TouchableOpacity style={styles.avatarButton}>
+              <Text style={styles.avatarButtonText}>Change</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.avatarButton}>
               <Text style={styles.avatarButtonText}>Remove</Text>
@@ -131,9 +144,9 @@ const ProfileScreen = ({ navigation }) => {
           </View>
         </View>
 
-        {/* Form Fields */}
+        {/* Form Fields - siempre editables */}
         <View style={styles.form}>
-          <Text style={styles.label}>First name</Text>
+          <Text style={styles.label}>First name *</Text>
           <TextInput
             style={styles.input}
             value={firstName}
@@ -141,15 +154,15 @@ const ProfileScreen = ({ navigation }) => {
             placeholder="Enter first name"
           />
 
-          <Text style={styles.label}>Last name</Text>
+          <Text style={styles.label}>Last name (optional)</Text>
           <TextInput
             style={styles.input}
             value={lastName}
             onChangeText={setLastName}
-            placeholder="Enter last name"
+            placeholder="Enter last name (optional)"
           />
 
-          <Text style={styles.label}>Email</Text>
+          <Text style={styles.label}>Email *</Text>
           <TextInput
             style={styles.input}
             value={email}
@@ -159,17 +172,16 @@ const ProfileScreen = ({ navigation }) => {
             placeholder="Enter email"
           />
 
-          <Text style={styles.label}>Phone number</Text>
+          <Text style={styles.label}>Phone number (optional)</Text>
           <TextInput
             style={styles.input}
             value={phone}
             onChangeText={setPhone}
             keyboardType="phone-pad"
-            placeholder="Enter phone number"
+            placeholder="Enter phone number (optional)"
           />
         </View>
 
-        {/* Email Notifications */}
         <Text style={[styles.sectionTitle, styles.notificationsTitle]}>
           Email notifications
         </Text>
@@ -205,20 +217,18 @@ const ProfileScreen = ({ navigation }) => {
           />
         </View>
 
-        {/* Log out Button */}
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-          <Text style={styles.logoutButtonText}>Log out</Text>
-        </TouchableOpacity>
-
-        {/* Action Buttons */}
         <View style={styles.actionButtons}>
-          <TouchableOpacity style={styles.discardButton} onPress={handleDiscardChanges}>
+          <TouchableOpacity style={styles.discardButton} onPress={loadProfile}>
             <Text style={styles.discardButtonText}>Discard changes</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.saveButton} onPress={handleSaveChanges}>
             <Text style={styles.saveButtonText}>Save changes</Text>
           </TouchableOpacity>
         </View>
+
+        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+          <Text style={styles.logoutButtonText}>Log out</Text>
+        </TouchableOpacity>
       </View>
     </ScrollView>
   );
@@ -228,6 +238,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#FFFFFF',
+    marginBottom: 26,
   },
   content: {
     paddingHorizontal: 20,
@@ -304,22 +315,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#333333',
   },
-  logoutButton: {
-    backgroundColor: '#F4CE14',
-    paddingVertical: 14,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  logoutButtonText: {
-    color: '#000000',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
   actionButtons: {
     flexDirection: 'row',
     gap: 12,
-    marginBottom: 32,
+    marginBottom: 16,
   },
   discardButton: {
     flex: 1,
@@ -337,13 +336,24 @@ const styles = StyleSheet.create({
   },
   saveButton: {
     flex: 1,
-    backgroundColor: '#495E57',
+    backgroundColor: '#495E57', // Verde
     paddingVertical: 14,
     borderRadius: 8,
     alignItems: 'center',
   },
   saveButtonText: {
-    color: '#ffffff',
+    color: '#FFFFFF', // Blanco
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  logoutButton: {
+    backgroundColor: '#F4CE14', // Amarillo
+    paddingVertical: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  logoutButtonText: {
+    color: '#000000', // Negro
     fontSize: 16,
     fontWeight: 'bold',
   },

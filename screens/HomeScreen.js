@@ -1,10 +1,9 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Text,
   View,
   StyleSheet,
   FlatList,
-  StatusBar,
   Alert,
   Image,
   TouchableOpacity,
@@ -13,39 +12,42 @@ import {
   BackHandler,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { createTable, getMenuItems, saveMenuItems, filterByQueryAndCategories } from '../database';
+import { createTable, getMenuItems, saveMenuItems } from '../database';
 import { getIsOnboarded } from '../utils/storage';
 
 const API_URL =
-  'https://raw.githubusercontent.com/Meta-Mobile-Developer-PC/Working-With-Data-API/main/menu-items-by-category.json';
+  'https://raw.githubusercontent.com/Meta-Mobile-Developer-PC/Working-With-Data-API/main/capstone.json';
 
-// Mapeo de imágenes por ID
-const imageMap = {
-  1: require('../assets/1.png'),
-  2: require('../assets/2.png'),
-  3: require('../assets/3.png'),
-  4: require('../assets/4.png'),
-  5: require('../assets/5.png'),
-  6: require('../assets/6.png'),
-  7: require('../assets/7.png'),
-  8: require('../assets/8.png'),
-  9: require('../assets/9.png'),
-  10: require('../assets/10.png'),
-  11: require('../assets/11.png'),
-  12: require('../assets/12.png')
+const localImages = {
+  'greekSalad.jpg': require('../assets/greekSalad.jpg'),
+  'bruschetta.jpg': require('../assets/bruschetta.jpg'),
+  'grilledFish.jpg': require('../assets/grilledFish.jpg'),
+  'pasta.jpg': require('../assets/pasta.jpg'),
+  'lemonDessert.jpg': require('../assets/lemonDessert.jpg'),
 };
 
-const getImageSource = (id) => {
-  return imageMap[id] || require('../assets/HeroImage.png');
+const getImageSource = (imageName) => {
+  if (localImages[imageName]) {
+    return localImages[imageName];
+  }
+
+  return require('../assets/HeroImage.png');
+};
+
+const categoryDisplayNames = {
+  starters: 'Starters',
+  mains: 'Mains',
+  desserts: 'Desserts',
+  drinks: 'Drinks',
 };
 
 const HomeScreen = ({ navigation }) => {
   const [menuItems, setMenuItems] = useState([]);
   const [filteredItems, setFilteredItems] = useState([]);
   const [searchText, setSearchText] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [selectedCategories, setSelectedCategories] = useState([]);
   
-  const categories = ['All', 'Appetizers', 'Salads', 'Beverages'];
+  const categories = ['starters', 'mains', 'desserts', 'drinks'];
 
   useEffect(() => {
     const checkAccess = async () => {
@@ -58,22 +60,22 @@ const HomeScreen = ({ navigation }) => {
   }, []);
 
   useEffect(() => {
-      const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
-        return true;
-      });
-  
-      return () => backHandler.remove();
-    }, []);
+    const backHandler = BackHandler.addEventListener('hardwareBackPress', () => {
+      return true;
+    });
+    return () => backHandler.remove();
+  }, []);
 
   const fetchData = async () => {
     const response = await fetch(API_URL);
     const json = await response.json();
-    const menuItems = json.menu.map((item) => ({
-      id: item.id,
-      title: item.title,
-      price: item.price,
-      category: item.category.title,
+    const menuItems = json.menu.map((item, index) => ({
+      id: index + 1,
+      title: item.name,
+      price: item.price.toString(),
+      category: item.category,
       description: item.description,
+      image: item.image,
     }));
     return menuItems;
   };
@@ -83,23 +85,36 @@ const HomeScreen = ({ navigation }) => {
       try {
         await createTable();
         let items = await getMenuItems();
-        if (!items.length) {
+        if (!items || items.length === 0) {
           items = await fetchData();
           await saveMenuItems(items);
+          setMenuItems(items);
+          setFilteredItems(items);
+        } else {
+          setMenuItems(items);
+          setFilteredItems(items);
         }
-        setMenuItems(items);
-        setFilteredItems(items);
       } catch (e) {
-        Alert.alert(e.message);
+        Alert.alert('Error', e.message);
       }
     })();
   }, []);
 
+  const toggleCategory = (category) => {
+    if (selectedCategories.includes(category)) {
+      setSelectedCategories(selectedCategories.filter(c => c !== category));
+    } else {
+      setSelectedCategories([...selectedCategories, category]);
+    }
+  };
+
   useEffect(() => {
-    let filtered = menuItems;
+    let filtered = [...menuItems];
     
-    if (selectedCategory !== 'All') {
-      filtered = filtered.filter(item => item.category === selectedCategory);
+    if (selectedCategories.length > 0) {
+      filtered = filtered.filter(item => 
+        selectedCategories.includes(item.category)
+      );
     }
     
     if (searchText.trim()) {
@@ -109,20 +124,20 @@ const HomeScreen = ({ navigation }) => {
     }
     
     setFilteredItems(filtered);
-  }, [searchText, selectedCategory, menuItems]);
+  }, [searchText, selectedCategories, menuItems]);
 
-  const MenuItemCard = ({ id, title, price, description }) => (
+  const MenuItemCard = ({ title, price, description, image }) => (
     <View style={styles.menuItemCard}>
       <View style={styles.menuItemInfo}>
         <Text style={styles.menuItemTitle}>{title}</Text>
         <Text style={styles.menuItemDescription} numberOfLines={2}>
           {description || 'Delicious Mediterranean dish prepared with fresh ingredients'}
         </Text>
-        <Text style={styles.menuItemPrice}>${price}</Text>
+        <Text style={styles.menuItemPrice}>${parseFloat(price).toFixed(2)}</Text>
       </View>
       <View style={styles.menuItemImage}>        
         <Image
-          source={getImageSource(id)}
+          source={getImageSource(image)}
           style={styles.itemImage}
           resizeMode="cover"
         />
@@ -133,7 +148,6 @@ const HomeScreen = ({ navigation }) => {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Header */}
         <View style={styles.header}>
           <Image
             source={require('../assets/HeaderLogo.png')}
@@ -149,7 +163,6 @@ const HomeScreen = ({ navigation }) => {
           </TouchableOpacity>
         </View>
 
-        {/* Hero Section */}
         <View style={styles.heroSection}>
             <Text style={styles.restaurantName}>Little Lemon</Text>
             <View style={styles.rowStyle}>
@@ -179,7 +192,6 @@ const HomeScreen = ({ navigation }) => {
             </View>
         </View>
         
-        {/* Menu Breakdown Section */}
         <View style={styles.menuBreakdown}>
           <Text style={styles.orderTitle}>ORDER FOR DELIVERY!</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -189,17 +201,17 @@ const HomeScreen = ({ navigation }) => {
                   key={category}
                   style={[
                     styles.categoryButton,
-                    selectedCategory === category && styles.categoryButtonActive,
+                    selectedCategories.includes(category) && styles.categoryButtonActive,
                   ]}
-                  onPress={() => setSelectedCategory(category)}
+                  onPress={() => toggleCategory(category)}
                 >
                   <Text
                     style={[
                       styles.categoryText,
-                      selectedCategory === category && styles.categoryTextActive,
+                      selectedCategories.includes(category) && styles.categoryTextActive,
                     ]}
                   >
-                    {category}
+                    {categoryDisplayNames[category] || category}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -214,10 +226,10 @@ const HomeScreen = ({ navigation }) => {
             keyExtractor={(item) => item.id.toString()}
             renderItem={({ item }) => (
               <MenuItemCard
-                id={item.id}
                 title={item.title}
                 price={item.price}
                 description={item.description}
+                image={item.image}
               />
             )}
             scrollEnabled={false}

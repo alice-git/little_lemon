@@ -3,12 +3,16 @@ import * as SQLite from 'expo-sqlite';
 const db = SQLite.openDatabaseSync('little_lemon');
 
 export async function createTable() {  
+  await db.execAsync('DROP TABLE IF EXISTS menuitems;');
+  
   await db.execAsync(`
     CREATE TABLE IF NOT EXISTS menuitems (
       id INTEGER PRIMARY KEY NOT NULL,
       title TEXT,
+      description TEXT,
       price TEXT,
-      category TEXT
+      category TEXT,
+      image TEXT
     );
   `);
 }
@@ -19,54 +23,23 @@ export async function getMenuItems() {
 }
 
 export async function saveMenuItems(menuItems) {
-
   if (!menuItems?.length) return;
 
-  const values = menuItems
-    .map(
-      (item) =>
-        `('${item.id}', '${item.title}', '${item.price}', '${item.category}')`
-    )
-    .join(',');
+  // ✅ Limpiar tabla antes de insertar nuevos datos
+  await db.execAsync('DELETE FROM menuitems;');
 
-  const query = `
-    INSERT INTO menuitems (id, title, price, category)
-    VALUES ${values};
-  `;
-
-  await db.execAsync(query);
-}
-
-
-export async function filterByQueryAndCategories(
-  query,
-  activeCategories
-) {
-  try {
-    // Crear placeholders dinámicos para categorías
-    const categoryPlaceholders = activeCategories
-      .map(() => '?')
-      .join(',');
-
-    // SQL con filtros por título y categoría
-    const sql = `
-      SELECT *
-      FROM menuitems
-      WHERE title LIKE ?
-      AND category IN (${categoryPlaceholders})
+  for (const item of menuItems) {
+    const query = `
+      INSERT INTO menuitems (id, title, description, price, category, image)
+      VALUES (?, ?, ?, ?, ?, ?);
     `;
-
-    // Parámetros
-    const params = [
-      `%${query}%`,
-      ...activeCategories,
-    ];
-
-    // Ejecutar query
-    const result = await db.getAllAsync(sql, params);
-
-    return result;
-  } catch (error) {
-    throw error;
+    await db.runAsync(query, [
+      item.id,
+      item.title,
+      item.description || '',
+      item.price,
+      item.category,
+      item.image || ''
+    ]);
   }
 }
